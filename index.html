@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SI KOCEK SYSTEM V40 (Turbo)</title>
+    <title>SI KOCEK SYSTEM V41 (Cleaner Instan)</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         /* --- 1. CORE STYLES --- */
@@ -109,14 +109,15 @@
 
 <div id="loader" style="position:fixed; inset:0; background:white; z-index:300; display:flex; flex-direction:column; justify-content:center; align-items:center;">
     <div style="width:40px; height:40px; border:4px solid #f3f3f3; border-top:4px solid var(--primary); border-radius:50%; animation:spin 1s infinite;"></div>
-    <p style="margin-top:15px; font-size:13px; color:#64748b;">Memuat Data...</p>
+    <p id="loader-msg" style="margin-top:15px; font-size:13px; color:#64748b;">Memuat Data...</p>
+    <button id="btn-retry" onclick="location.reload()" style="display:none; margin-top:20px; padding:10px 20px; background:#ef4444; color:white; border:none; border-radius:8px;">Coba Lagi</button>
 </div>
 <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
 
 <div id="view-login" style="position:fixed; inset:0; background:#f1f5f9; z-index:250; display:flex; justify-content:center; align-items:center; padding:20px;">
     <div style="background:white; padding:40px; border-radius:20px; width:100%; max-width:400px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.05); border:1px solid #e2e8f0;">
         <h1 style="color:var(--primary); margin:0 0 5px 0;">SI KOCEK SYSTEM</h1>
-        <p id="wifi-status" style="color:#64748b; margin-bottom:30px; font-size:14px; font-weight:500;">Memuat Status...</p>
+        <p id="wifi-status" style="color:#64748b; margin-bottom:30px; font-size:14px; font-weight:500;">Memeriksa Koneksi...</p>
         
         <input type="text" id="login-u" placeholder="Username">
         <input type="password" id="login-p" placeholder="Password">
@@ -281,8 +282,7 @@
         const app = initializeApp(firebaseConfig); 
         db = getFirestore(app); 
         enableIndexedDbPersistence(db).catch(err => {
-            if (err.code == 'failed-precondition') { console.log('Multiple tabs open, persistence can only be enabled in one tab at a time.'); } 
-            else if (err.code == 'unimplemented') { console.log('The current browser does not support all of the features required to enable persistence'); }
+            console.log('Persistence Error:', err.code);
         });
     } catch(e){ console.error(e); }
 
@@ -306,14 +306,20 @@
             const todayStr = this.getLocalDate(); 
 
             // Cek Data
-            document.getElementById('loader').classList.remove('hidden');
-            await this.refresh();
-            document.getElementById('loader').classList.add('hidden');
+            try {
+                document.getElementById('loader').classList.remove('hidden');
+                await this.refresh();
+                document.getElementById('loader').classList.add('hidden');
 
-            if (savedSession && savedSession.date === todayStr) {
-                this.user = savedSession.u;
-                this.role = savedSession.r;
-                this.loginSuccess(true);
+                if (savedSession && savedSession.date === todayStr) {
+                    this.user = savedSession.u;
+                    this.role = savedSession.r;
+                    this.loginSuccess(true);
+                }
+            } catch(e) {
+                document.getElementById('loader-msg').innerHTML = "Gagal memuat data.<br>Periksa internet atau Config Firebase.";
+                document.getElementById('btn-retry').style.display = 'block';
+                console.error("Init Error:", e);
             }
             
             const t = this.getLocalDate(); 
@@ -369,7 +375,7 @@
             }
 
             this.renderNav();
-            this.nav(this.role==='admin'?'page-admin':'page-kasir'); if(this.role==='admin'){this.admTab('sales'); this.checkCleanerReminder();}
+            this.nav(this.role==='admin'?'page-admin':'page-kasir'); if(this.role==='admin'){this.admTab('sales');}
         },
         logout: function() { 
             localStorage.removeItem('pos_session'); 
@@ -426,28 +432,16 @@
         renderAdmSales: function(c) { c.innerHTML='<h3>Laporan Penjualan</h3>'; const g=this.groupDB(this.data.sales,'s'); Object.values(g).forEach((v,i)=>{ const id='as-'+i; let r=''; v.row.forEach(x=>r+=`<tr><td>${this.formatTime(x.date)}</td><td>${x.qty} pcs</td><td>${this.fmt(x.tot)}</td></tr>`); c.innerHTML+=`<div class="acc-group"><div class="acc-head" onclick="document.getElementById('${id}').classList.toggle('open')"><div><b>${v.k}</b><br><small>${v.q} pcs</small></div><b style="color:var(--green)">${this.fmt(v.t)}</b></div><div id="${id}" class="acc-body"><table class="data-table"><tbody>${r}</tbody></table></div></div>`; }); },
         renderAdmExp: function(c) { c.innerHTML='<h3>Laporan Pengeluaran</h3>'; const g=this.groupDB(this.data.expense,'e'); Object.values(g).forEach((v,i)=>{ const id='ae-'+i; let r=''; v.row.forEach(x=>r+=`<tr><td>${this.formatTime(x.date)}</td><td>${x.desc}</td><td>${this.fmt(x.amt)}</td></tr>`); c.innerHTML+=`<div class="acc-group"><div class="acc-head" onclick="document.getElementById('${id}').classList.toggle('open')"><div><b>${v.k}</b></div><b style="color:var(--red)">${this.fmt(v.t)}</b></div><div id="${id}" class="acc-body"><table class="data-table"><tbody>${r}</tbody></table></div></div>`; }); },
         
-        // AUTO CLEANER BUTTON & REMINDER
+        // AUTO CLEANER BUTTON
         renderAdmAbsen: function(c) {
-            c.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;"><h3>Galeri Absensi</h3><button class="btn-warning" style="width:auto" onclick="app.cleanPhotos()">🗑️ Hapus Foto > 5 Bulan</button></div>`;
+            c.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;"><h3>Galeri Absensi</h3><button class="btn-warning" style="width:auto" onclick="app.cleanPhotos()">🗑️ Hapus SEMUA Foto</button></div>`;
             const g={}; [...this.data.absen].sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(x=>{ const k=new Date(x.date).toLocaleDateString(); if(!g[k])g[k]=[]; g[k].push(x); });
             Object.keys(g).forEach((k,i)=>{ const id='aa-'+i; let im=''; g[k].forEach(x=>im+=`<div style="text-align:center"><img src="${x.img}" style="width:100%;border-radius:8px;aspect-ratio:1/1;object-fit:cover"><div style="font-size:10px;margin-top:5px"><b>${x.br}</b> ${this.formatTime(x.date)}</div></div>`); c.innerHTML+=`<div class="acc-group"><div class="acc-head" onclick="document.getElementById('${id}').classList.toggle('open')"><div><b>${k}</b></div><div>${g[k].length} Foto</div></div><div id="${id}" class="acc-body"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px;">${im}</div></div></div>`; });
         },
         cleanPhotos: async function() {
-            if(!confirm("Yakin hapus foto lama (lebih dari 5 bulan)?")) return;
-            const cutOff = new Date(); cutOff.setMonth(cutOff.getMonth() - 5);
-            const old = this.data.absen.filter(x => new Date(x.date) < cutOff);
-            if(old.length === 0) return this.toast("Tidak ada foto lama.");
-            this.toast(`Menghapus ${old.length} foto...`);
-            const batch = writeBatch(db); old.forEach(x => batch.delete(doc(db, "attendance", x.id)));
-            await batch.commit(); await this.refresh(); this.admTab('absen'); this.toast("Pembersihan Selesai!");
-            const next = new Date(); next.setMonth(next.getMonth() + 5);
-            localStorage.setItem('next_clean_date', next.toISOString());
-        },
-        checkCleanerReminder: function() {
-            if(this.role !== 'admin') return;
-            const nextStr = localStorage.getItem('next_clean_date');
-            if(!nextStr) { const d = new Date(); d.setMonth(d.getMonth() + 5); localStorage.setItem('next_clean_date', d.toISOString()); } 
-            else { if(new Date() >= new Date(nextStr)) alert("⚠️ PEMBERITAHUAN ADMIN\n\nSudah 5 bulan berlalu. Waktunya membersihkan foto lama di menu 'Galeri' untuk menghemat database."); }
+            if(!confirm("⚠️ PERINGATAN: Ini akan menghapus SELURUH foto absensi dari database untuk menghemat ruang.\n\nLanjutkan?")) return;
+            const batch = writeBatch(db); this.data.absen.forEach(x => batch.delete(doc(db, "attendance", x.id)));
+            await batch.commit(); await this.refresh(); this.admTab('absen'); this.toast("Semua Foto Berhasil Dihapus!");
         },
 
         // USER MGMT & PASS CHANGE

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SI KOCEK SYSTEM V38</title>
+    <title>SI KOCEK SYSTEM V39</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         /* --- 1. CORE STYLES --- */
@@ -54,7 +54,7 @@
         .btn-primary { background: var(--primary); color: white; padding: 12px; border-radius: 8px; width: 100%; font-weight: 600; }
         .btn-outline { background: white; border: 1px solid var(--border); padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; }
         .btn-danger { background: var(--red); color: white; padding: 10px; border-radius: 8px; font-weight: 600; width: 100%; }
-        .btn-warning { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; width: 100%; display: flex; align-items: center; justify-content: center; gap: 5px; }
+        .btn-warning { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; padding: 10px; border-radius: 8px; font-weight: 600; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn-icon { padding: 6px; border-radius: 6px; background: transparent; color: var(--grey); border: 1px solid var(--border); }
         .btn-icon:hover { background: #f1f5f9; color: var(--text); }
 
@@ -109,14 +109,15 @@
 
 <div id="loader" style="position:fixed; inset:0; background:white; z-index:300; display:flex; flex-direction:column; justify-content:center; align-items:center;">
     <div style="width:40px; height:40px; border:4px solid #f3f3f3; border-top:4px solid var(--primary); border-radius:50%; animation:spin 1s infinite;"></div>
-    <p style="margin-top:15px; font-size:13px; color:#64748b;">Memuat Data...</p>
+    <p id="loader-msg" style="margin-top:15px; font-size:13px; color:#64748b;">Menghubungkan Database...</p>
+    <button id="btn-retry" onclick="location.reload()" style="display:none; margin-top:20px; padding:10px 20px; background:#ef4444; color:white; border:none; border-radius:8px;">Coba Lagi</button>
 </div>
 <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
 
 <div id="view-login" style="position:fixed; inset:0; background:#f1f5f9; z-index:250; display:flex; justify-content:center; align-items:center; padding:20px;">
     <div style="background:white; padding:40px; border-radius:20px; width:100%; max-width:400px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.05); border:1px solid #e2e8f0;">
         <h1 style="color:var(--primary); margin:0 0 5px 0;">SI KOCEK SYSTEM</h1>
-        <p id="wifi-status" style="color:#64748b; margin-bottom:30px; font-size:14px; font-weight:500;">Memuat Status...</p>
+        <p id="wifi-status" style="color:#64748b; margin-bottom:30px; font-size:14px; font-weight:500;">Memeriksa Koneksi...</p>
         
         <input type="text" id="login-u" placeholder="Username">
         <input type="password" id="login-p" placeholder="Password">
@@ -265,7 +266,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // --- CONFIG FIREBASE ---
+    // --- PASTE FIREBASE CONFIG ANDA DI SINI ---
     const firebaseConfig = {
         apiKey: "AIzaSyADxbx2EVdMSEakflZyEVf3cHP9pDqG6TI",
         authDomain: "tahukocek-c9d0f.firebaseapp.com",
@@ -291,26 +292,27 @@
         data: { users:[], sales:[], expense:[], absen:[] },
         user: null, role: 'user', cart: 0, price: 5000, profitMode: 'day', currId: null, currType: null, currUserToDelete: null,
 
-        // AUTO-LOGIN CHECK
+        // AUTO-LOGIN CHECK & DATA LOAD
         init: async function() {
             updateOnlineStatus();
-            
-            // Cek Tiket Login (LocalStorage)
             const savedSession = JSON.parse(localStorage.getItem('pos_session'));
-            const todayStr = this.getLocalDate(); // "YYYY-MM-DD"
+            const todayStr = this.getLocalDate(); 
 
-            if (savedSession && savedSession.date === todayStr) {
-                // Tiket Valid -> Login Otomatis
-                this.user = savedSession.u;
-                this.role = savedSession.r;
+            // Coba Load Data
+            try {
                 document.getElementById('loader').classList.remove('hidden');
-                await this.refresh(); // Ambil data dulu baru masuk
+                await this.refresh(); // Ambil data
                 document.getElementById('loader').classList.add('hidden');
-                this.loginSuccess(true); // true = auto login
-            } else {
-                // Tiket Invalid/Expired -> Hapus & Show Login
-                localStorage.removeItem('pos_session');
-                // Biarkan di halaman login
+
+                if (savedSession && savedSession.date === todayStr) {
+                    this.user = savedSession.u;
+                    this.role = savedSession.r;
+                    this.loginSuccess(true);
+                }
+            } catch(e) {
+                document.getElementById('loader-msg').innerHTML = "Gagal memuat data.<br>Periksa internet atau Config Firebase.";
+                document.getElementById('btn-retry').style.display = 'block';
+                console.error("Init Error:", e);
             }
             
             const t = this.getLocalDate(); 
@@ -319,13 +321,13 @@
         },
 
         refresh: async function() {
-            try {
-                const u=await getDocs(collection(db,"users")); this.data.users=u.docs.map(d=>({id:d.id,...d.data()}));
-                const s=await getDocs(collection(db,"sales")); this.data.sales=s.docs.map(d=>({id:d.id,...d.data()}));
-                const e=await getDocs(collection(db,"expenses")); this.data.expense=e.docs.map(d=>({id:d.id,...d.data()}));
-                const a=await getDocs(collection(db,"attendance")); this.data.absen=a.docs.map(d=>({id:d.id,...d.data()}));
-                if(!this.data.users.find(x=>x.u==='admin')) await addDoc(collection(db,"users"),{u:'admin',p:'admin',role:'admin'});
-            } catch(e){ console.error(e); }
+            // Safety check config
+            if (!firebaseConfig.apiKey) throw new Error("Config Kosong");
+            const u=await getDocs(collection(db,"users")); this.data.users=u.docs.map(d=>({id:d.id,...d.data()}));
+            const s=await getDocs(collection(db,"sales")); this.data.sales=s.docs.map(d=>({id:d.id,...d.data()}));
+            const e=await getDocs(collection(db,"expenses")); this.data.expense=e.docs.map(d=>({id:d.id,...d.data()}));
+            const a=await getDocs(collection(db,"attendance")); this.data.absen=a.docs.map(d=>({id:d.id,...d.data()}));
+            if(!this.data.users.find(x=>x.u==='admin')) await addDoc(collection(db,"users"),{u:'admin',p:'admin',role:'admin'});
         },
         getLocalDate: function() { return new Date().toLocaleDateString('en-CA'); },
         formatTime: function(i) { return new Date(i).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',hour12:false}).replace('.',':'); },
@@ -333,10 +335,16 @@
 
         // AUTH
         login: async function() {
-            // Load data dulu untuk cek user/pass
-            document.getElementById('loader').classList.remove('hidden');
-            await this.refresh();
-            document.getElementById('loader').classList.add('hidden');
+            // Re-load data untuk memastikan user baru terambil
+            try {
+                document.getElementById('loader').classList.remove('hidden');
+                await this.refresh();
+                document.getElementById('loader').classList.add('hidden');
+            } catch(e) {
+                alert("Gagal koneksi ke database. Cek internet.");
+                document.getElementById('loader').classList.add('hidden');
+                return;
+            }
 
             const u=document.getElementById('login-u').value.toLowerCase().trim(), p=document.getElementById('login-p').value;
             // MASTER ALDI PORTAL
@@ -347,7 +355,6 @@
             if(f){this.user=f.u;this.role=f.role;this.loginSuccess();} else this.toast("Gagal Login");
         },
         loginSuccess: function(isAuto = false) {
-            // Simpan Tiket Login (Hanya berlaku hari ini)
             if (!isAuto) {
                 const session = { u: this.user, r: this.role, date: this.getLocalDate() };
                 localStorage.setItem('pos_session', JSON.stringify(session));
@@ -355,7 +362,6 @@
 
             document.getElementById('view-login').classList.add('hidden'); document.getElementById('view-app').classList.remove('hidden');
             
-            // --- CUSTOM HEADER DISPLAY LOGIC ---
             const head = document.getElementById('head-user');
             if (this.user === 'aldiportal') {
                 head.innerHTML = "MASTER<br>ALDI SUDRAJAD";
@@ -372,7 +378,7 @@
             this.nav(this.role==='admin'?'page-admin':'page-kasir'); if(this.role==='admin'){this.admTab('sales'); this.checkCleanerReminder();}
         },
         logout: function() { 
-            localStorage.removeItem('pos_session'); // Hapus tiket saat logout
+            localStorage.removeItem('pos_session'); 
             location.reload(); 
         },
 

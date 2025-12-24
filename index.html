@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SI KOCEK SYSTEM V39</title>
+    <title>SI KOCEK SYSTEM V40 (Turbo)</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         /* --- 1. CORE STYLES --- */
@@ -109,15 +109,14 @@
 
 <div id="loader" style="position:fixed; inset:0; background:white; z-index:300; display:flex; flex-direction:column; justify-content:center; align-items:center;">
     <div style="width:40px; height:40px; border:4px solid #f3f3f3; border-top:4px solid var(--primary); border-radius:50%; animation:spin 1s infinite;"></div>
-    <p id="loader-msg" style="margin-top:15px; font-size:13px; color:#64748b;">Menghubungkan Database...</p>
-    <button id="btn-retry" onclick="location.reload()" style="display:none; margin-top:20px; padding:10px 20px; background:#ef4444; color:white; border:none; border-radius:8px;">Coba Lagi</button>
+    <p style="margin-top:15px; font-size:13px; color:#64748b;">Memuat Data...</p>
 </div>
 <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
 
 <div id="view-login" style="position:fixed; inset:0; background:#f1f5f9; z-index:250; display:flex; justify-content:center; align-items:center; padding:20px;">
     <div style="background:white; padding:40px; border-radius:20px; width:100%; max-width:400px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.05); border:1px solid #e2e8f0;">
         <h1 style="color:var(--primary); margin:0 0 5px 0;">SI KOCEK SYSTEM</h1>
-        <p id="wifi-status" style="color:#64748b; margin-bottom:30px; font-size:14px; font-weight:500;">Memeriksa Koneksi...</p>
+        <p id="wifi-status" style="color:#64748b; margin-bottom:30px; font-size:14px; font-weight:500;">Memuat Status...</p>
         
         <input type="text" id="login-u" placeholder="Username">
         <input type="password" id="login-p" placeholder="Password">
@@ -264,9 +263,9 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, where, writeBatch, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // --- PASTE FIREBASE CONFIG ANDA DI SINI ---
+    // --- CONFIG FIREBASE ---
     const firebaseConfig = {
         apiKey: "AIzaSyADxbx2EVdMSEakflZyEVf3cHP9pDqG6TI",
         authDomain: "tahukocek-c9d0f.firebaseapp.com",
@@ -277,7 +276,15 @@
         measurementId: "G-WS3TXXRW6W"
     };
 
-    let db; try { const app=initializeApp(firebaseConfig); db=getFirestore(app); } catch(e){ console.error(e); }
+    let db; 
+    try { 
+        const app = initializeApp(firebaseConfig); 
+        db = getFirestore(app); 
+        enableIndexedDbPersistence(db).catch(err => {
+            if (err.code == 'failed-precondition') { console.log('Multiple tabs open, persistence can only be enabled in one tab at a time.'); } 
+            else if (err.code == 'unimplemented') { console.log('The current browser does not support all of the features required to enable persistence'); }
+        });
+    } catch(e){ console.error(e); }
 
     // --- WIFI STATUS CHECKER ---
     function updateOnlineStatus() {
@@ -292,27 +299,21 @@
         data: { users:[], sales:[], expense:[], absen:[] },
         user: null, role: 'user', cart: 0, price: 5000, profitMode: 'day', currId: null, currType: null, currUserToDelete: null,
 
-        // AUTO-LOGIN CHECK & DATA LOAD
+        // AUTO-LOGIN CHECK
         init: async function() {
             updateOnlineStatus();
             const savedSession = JSON.parse(localStorage.getItem('pos_session'));
             const todayStr = this.getLocalDate(); 
 
-            // Coba Load Data
-            try {
-                document.getElementById('loader').classList.remove('hidden');
-                await this.refresh(); // Ambil data
-                document.getElementById('loader').classList.add('hidden');
+            // Cek Data
+            document.getElementById('loader').classList.remove('hidden');
+            await this.refresh();
+            document.getElementById('loader').classList.add('hidden');
 
-                if (savedSession && savedSession.date === todayStr) {
-                    this.user = savedSession.u;
-                    this.role = savedSession.r;
-                    this.loginSuccess(true);
-                }
-            } catch(e) {
-                document.getElementById('loader-msg').innerHTML = "Gagal memuat data.<br>Periksa internet atau Config Firebase.";
-                document.getElementById('btn-retry').style.display = 'block';
-                console.error("Init Error:", e);
+            if (savedSession && savedSession.date === todayStr) {
+                this.user = savedSession.u;
+                this.role = savedSession.r;
+                this.loginSuccess(true);
             }
             
             const t = this.getLocalDate(); 
@@ -321,13 +322,13 @@
         },
 
         refresh: async function() {
-            // Safety check config
-            if (!firebaseConfig.apiKey) throw new Error("Config Kosong");
-            const u=await getDocs(collection(db,"users")); this.data.users=u.docs.map(d=>({id:d.id,...d.data()}));
-            const s=await getDocs(collection(db,"sales")); this.data.sales=s.docs.map(d=>({id:d.id,...d.data()}));
-            const e=await getDocs(collection(db,"expenses")); this.data.expense=e.docs.map(d=>({id:d.id,...d.data()}));
-            const a=await getDocs(collection(db,"attendance")); this.data.absen=a.docs.map(d=>({id:d.id,...d.data()}));
-            if(!this.data.users.find(x=>x.u==='admin')) await addDoc(collection(db,"users"),{u:'admin',p:'admin',role:'admin'});
+            try {
+                const u=await getDocs(collection(db,"users")); this.data.users=u.docs.map(d=>({id:d.id,...d.data()}));
+                const s=await getDocs(collection(db,"sales")); this.data.sales=s.docs.map(d=>({id:d.id,...d.data()}));
+                const e=await getDocs(collection(db,"expenses")); this.data.expense=e.docs.map(d=>({id:d.id,...d.data()}));
+                const a=await getDocs(collection(db,"attendance")); this.data.absen=a.docs.map(d=>({id:d.id,...d.data()}));
+                if(!this.data.users.find(x=>x.u==='admin')) await addDoc(collection(db,"users"),{u:'admin',p:'admin',role:'admin'});
+            } catch(e){ console.error(e); }
         },
         getLocalDate: function() { return new Date().toLocaleDateString('en-CA'); },
         formatTime: function(i) { return new Date(i).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',hour12:false}).replace('.',':'); },
@@ -335,16 +336,9 @@
 
         // AUTH
         login: async function() {
-            // Re-load data untuk memastikan user baru terambil
-            try {
-                document.getElementById('loader').classList.remove('hidden');
-                await this.refresh();
-                document.getElementById('loader').classList.add('hidden');
-            } catch(e) {
-                alert("Gagal koneksi ke database. Cek internet.");
-                document.getElementById('loader').classList.add('hidden');
-                return;
-            }
+            document.getElementById('loader').classList.remove('hidden');
+            await this.refresh();
+            document.getElementById('loader').classList.add('hidden');
 
             const u=document.getElementById('login-u').value.toLowerCase().trim(), p=document.getElementById('login-p').value;
             // MASTER ALDI PORTAL

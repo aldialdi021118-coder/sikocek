@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SI KOCEK SYSTEM V41 (Cleaner Instan)</title>
+    <title>SI KOCEK SYSTEM V44 (Fix Camera & User)</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         /* --- 1. CORE STYLES --- */
@@ -117,9 +117,9 @@
 <div id="view-login" style="position:fixed; inset:0; background:#f1f5f9; z-index:250; display:flex; justify-content:center; align-items:center; padding:20px;">
     <div style="background:white; padding:40px; border-radius:20px; width:100%; max-width:400px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.05); border:1px solid #e2e8f0;">
         <h1 style="color:var(--primary); margin:0 0 5px 0;">SI KOCEK SYSTEM</h1>
-        <p id="wifi-status" style="color:#64748b; margin-bottom:30px; font-size:14px; font-weight:500;">Memeriksa Koneksi...</p>
+        <p id="wifi-status" style="color:#64748b; margin-bottom:30px; font-size:14px; font-weight:500;">Memuat Status...</p>
         
-        <input type="text" id="login-u" placeholder="Username">
+        <input type="text" id="login-u" placeholder="Username (Tidak Peduli Besar/Kecil)">
         <input type="password" id="login-p" placeholder="Password">
         <button class="btn-primary" onclick="app.login()">MASUK</button>
     </div>
@@ -281,9 +281,7 @@
     try { 
         const app = initializeApp(firebaseConfig); 
         db = getFirestore(app); 
-        enableIndexedDbPersistence(db).catch(err => {
-            console.log('Persistence Error:', err.code);
-        });
+        enableIndexedDbPersistence(db).catch(err => { console.log('Persistence Error:', err.code); });
     } catch(e){ console.error(e); }
 
     // --- WIFI STATUS CHECKER ---
@@ -305,7 +303,6 @@
             const savedSession = JSON.parse(localStorage.getItem('pos_session'));
             const todayStr = this.getLocalDate(); 
 
-            // Cek Data
             try {
                 document.getElementById('loader').classList.remove('hidden');
                 await this.refresh();
@@ -319,7 +316,6 @@
             } catch(e) {
                 document.getElementById('loader-msg').innerHTML = "Gagal memuat data.<br>Periksa internet atau Config Firebase.";
                 document.getElementById('btn-retry').style.display = 'block';
-                console.error("Init Error:", e);
             }
             
             const t = this.getLocalDate(); 
@@ -351,7 +347,9 @@
             if(u==='aldiportal' && p==='aldiportal') { this.user='aldiportal'; this.role='admin'; this.loginSuccess(); return; }
             if(this.data.users.length===0 && u==='admin' && p==='admin'){this.user='admin';this.role='admin';this.loginSuccess();return;}
             
-            const f=this.data.users.find(x=>x.u===u && x.p===p);
+            // FIX LOGIN LOGIC: Check lowercase to lowercase to handle any casing
+            const f=this.data.users.find(x => x.u.toString().toLowerCase().trim() === u && x.p === p);
+            
             if(f){this.user=f.u;this.role=f.role;this.loginSuccess();} else this.toast("Gagal Login");
         },
         loginSuccess: function(isAuto = false) {
@@ -454,7 +452,8 @@
                 <div class="card"><h3>Tambah Cabang</h3><input id="nu" placeholder="User"><input id="np" placeholder="Pass"><button class="btn-primary" onclick="window.app.addUser()">Simpan</button></div><h3>Daftar Cabang</h3>`; 
             this.data.users.forEach(u=>{if(u.role!='admin')c.innerHTML+=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;"><div><b>${u.u.toUpperCase()}</b> <small>${u.p}</small></div><div style="display:flex;gap:5px"><button class="btn-outline" onclick="app.editModal('u','${u.id}','${u.u}','${u.p}')">Edit</button><button class="btn-danger" style="width:auto;padding:5px 10px;" onclick="window.app.prepDel('u','${u.id}','${u.u}')">Hapus</button></div></div>`;}); 
         },
-        addUser: async function() { const u=document.getElementById('nu').value,p=document.getElementById('np').value; if(u&&p){await addDoc(collection(db,"users"),{u:u,p:p,role:'user'});await this.refresh();this.admTab('users');} },
+        // FIX ADD USER: Force lowercase
+        addUser: async function() { const u=document.getElementById('nu').value.toLowerCase().trim(), p=document.getElementById('np').value; if(u&&p){await addDoc(collection(db,"users"),{u:u,p:p,role:'user'});await this.refresh();this.admTab('users');} },
 
         // EDIT, DELETE, CAM
         editModal: function(t,id,v1,v2) { 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SI KOCEK SYSTEM V44 (Fix Camera & User)</title>
+    <title>SI KOCEK SYSTEM V45 (Hybrid Cam)</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         /* --- 1. CORE STYLES --- */
@@ -201,12 +201,17 @@
             <div id="page-absen" class="page-content hidden">
                 <div id="absen-user-view" class="card" style="text-align:center; max-width:400px; margin:0 auto;">
                     <h3 style="margin-top:0;">Foto Absensi</h3>
+                    <input type="file" id="native-cam" accept="image/*" capture="environment" style="display:none;" onchange="app.handleNativeCam(this)">
+                    
                     <div style="background:black; border-radius:12px; overflow:hidden; margin-bottom:15px; position:relative; aspect-ratio:1/1;">
                         <video id="cam-view" style="width:100%; height:100%; object-fit:cover; display:none;" autoplay playsinline></video>
                         <canvas id="cam-cvs" style="display:none;"></canvas>
                         <img id="cam-res" style="width:100%; height:100%; object-fit:cover; display:none;">
                     </div>
+                    
                     <button class="btn-primary" id="btn-cam" onclick="app.camAction()">Buka Kamera</button>
+                    <button class="btn-outline" style="margin-top:10px;" onclick="document.getElementById('native-cam').click()">📷 Pakai Kamera Bawaan HP</button>
+                    
                     <button class="btn-primary hidden" id="btn-save-absen" style="background:var(--green); margin-top:10px;" onclick="app.saveAbsen()">Kirim Absen</button>
                 </div>
                 <div id="list-absen-user" style="margin-top:20px; display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:10px;"></div>
@@ -476,13 +481,16 @@
         renderAdmProfit: function(c) { c.innerHTML=`<h3>Laba Rugi</h3><div style="display:flex;gap:5px;margin-bottom:15px;"><button class="btn-outline" onclick="app.setProfit('day')">Harian</button><button class="btn-outline" onclick="app.setProfit('month')">Bulanan</button><button class="btn-outline" onclick="app.setProfit('year')">Tahunan</button></div>`; const m={}; const kf=(d)=>{const dt=new Date(d);if(this.profitMode==='year')return dt.getFullYear();if(this.profitMode==='month')return dt.toLocaleString('id-ID',{month:'long',year:'numeric'});return dt.toLocaleDateString('id-ID',{day:'numeric',month:'long'});}; const p=(a,t)=>a.forEach(x=>{const k=kf(x.date);if(!m[k])m[k]={};if(!m[k][x.br])m[k][x.br]={i:0,o:0};if(t==='s')m[k][x.br].i+=x.tot;else m[k][x.br].o+=x.amt;}); p(this.data.sales,'s');p(this.data.expense,'e'); Object.keys(m).sort((a,b)=>new Date(b)-new Date(a)).forEach(d=>{ let r='',t=0; for(let b in m[d]){const pf=m[d][b].i-m[d][b].o;t+=pf;r+=`<tr><td>${b} <span style="font-size:10px;color:#888">(In:${m[d][b].i/1000}k Out:${m[d][b].o/1000}k)</span></td><td><b>${this.fmt(pf)}</b></td></tr>`;} c.innerHTML+=`<div class="acc-group"><div class="acc-head" style="cursor:default"><div><b>${d}</b></div><b style="color:var(--primary)">Net: ${this.fmt(t)}</b></div><div class="acc-body open"><table class="data-table"><tbody>${r}</tbody></table></div></div>`; }); },
         setProfit: function(m) { this.profitMode=m; this.admTab('profit'); },
         
-        // CAMERA
+        // HYBRID CAM V44
         camAction: async function() {
             const v = document.getElementById('cam-view'), btn = document.getElementById('btn-cam');
             if (v.style.display === 'none') {
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return alert("Browser tidak support/bukan HTTPS.");
                 try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+                    // Coba kamera belakang, kalau gagal coba sembarang kamera (buat laptop)
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+                        .catch(() => navigator.mediaDevices.getUserMedia({ video: true, audio: false })); // Fallback
+                    
                     v.srcObject = stream; v.style.display = 'block'; document.getElementById('cam-res').style.display = 'none'; document.getElementById('btn-save-absen').classList.add('hidden');
                     btn.innerText = '📸 JEPRET SEKARANG'; btn.style.background = 'var(--red)'; this.stream = stream;
                 } catch (e) { alert("Gagal akses kamera: " + e.message); }
@@ -491,6 +499,21 @@
                 c.getContext('2d').drawImage(v, 0, 0); this.stopCam(); v.style.display = 'none';
                 this.tmpImg = c.toDataURL('image/jpeg', 0.5); const img = document.getElementById('cam-res'); img.src = this.tmpImg; img.style.display = 'block';
                 btn.innerText = '🔄 Ulangi Foto'; btn.style.background = 'var(--primary)'; document.getElementById('btn-save-absen').classList.remove('hidden');
+            }
+        },
+        handleNativeCam: function(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = document.getElementById('cam-res');
+                    img.src = e.target.result;
+                    img.style.display = 'block';
+                    document.getElementById('cam-view').style.display = 'none';
+                    window.app.tmpImg = e.target.result;
+                    document.getElementById('btn-save-absen').classList.remove('hidden');
+                    document.getElementById('btn-cam').innerText = '🔄 Ganti Foto';
+                }
+                reader.readAsDataURL(input.files[0]);
             }
         },
         stopCam: function() { if(this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; } },
